@@ -1,71 +1,82 @@
-@echo off
+﻿@echo off
+setlocal
 chcp 65001 >nul
+
+set "ROOT=%~dp0"
+pushd "%ROOT%"
+
 echo ==========================================
-echo    GryFf - Запуск локального сервера
+echo    GryFf - Local Development Launcher
 echo ==========================================
 echo.
 
-:: Проверка Node.js
-node --version >nul 2>&1
+where node >nul 2>&1
 if errorlevel 1 (
-    echo [ОШИБКА] Node.js не установлен!
-    echo Скачайте с https://nodejs.org/
-    pause
-    exit /b 1
+  echo [ERROR] Node.js is not installed or not in PATH.
+  pause
+  exit /b 1
 )
 
-echo [OK] Node.js найден
+echo [OK] Node.js found
 echo.
 
-:: Установка зависимостей бэкенда
-echo [1/4] Установка зависимостей бэкенда...
-cd backend
+if not exist "%ROOT%backend\package.json" (
+  echo [ERROR] backend\package.json not found.
+  pause
+  exit /b 1
+)
+
+if not exist "%ROOT%frontend\package.json" (
+  echo [ERROR] frontend\package.json not found.
+  pause
+  exit /b 1
+)
+
+echo [0/5] Cleaning busy ports (3000, 5173)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ports=@(3000,5173); foreach($p in $ports){$c=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if($c){Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue; Write-Host ('[INFO] Freed port ' + $p + ' (PID ' + $c.OwningProcess + ')');}}"
+timeout /t 1 /nobreak >nul
+
+echo [1/5] Installing backend dependencies...
+cd /d "%ROOT%backend"
 call npm install
 if errorlevel 1 (
-    echo [ОШИБКА] Не удалось установить зависимости бэкенда
-    pause
-    exit /b 1
+  echo [ERROR] Backend dependencies install failed.
+  pause
+  exit /b 1
 )
-echo [OK] Зависимости бэкенда установлены
-echo.
 
-:: Запуск бэкенда в отдельном окне
-echo [2/4] Запуск бэкенда на порту 3000...
-start "GryFf Backend" cmd /k "cd backend && npm run dev"
-echo [OK] Бэкенд запущен
-timeout /t 3 /nobreak >nul
-echo.
+echo [2/5] Starting backend (port 3000)...
+start "GryFf Backend" cmd /k "cd /d \"%ROOT%backend\" && npm run dev"
+timeout /t 2 /nobreak >nul
 
-:: Установка зависимостей фронтенда
-echo [3/4] Установка зависимостей фронтенда...
-cd ..\frontend
+echo [3/5] Installing frontend dependencies...
+cd /d "%ROOT%frontend"
 call npm install
 if errorlevel 1 (
-    echo [ОШИБКА] Не удалось установить зависимости фронтенда
-    pause
-    exit /b 1
+  echo [ERROR] Frontend dependencies install failed.
+  pause
+  exit /b 1
 )
-echo [OK] Зависимости фронтенда установлены
-echo.
 
-:: Запуск фронтенда
-echo [4/4] Запуск фронтенда на порту 5173...
-start "GryFf Frontend" cmd /k "cd frontend && npm run dev"
-echo [OK] Фронтенд запущен
-echo.
+echo [4/5] Starting frontend (port 5173)...
+start "GryFf Frontend" cmd /k "cd /d \"%ROOT%frontend\" && npm run dev -- --host 0.0.0.0 --port 5173"
+timeout /t 2 /nobreak >nul
 
+echo [5/5] Checking availability...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try {$f=(Invoke-WebRequest -Uri 'http://localhost:5173' -UseBasicParsing -TimeoutSec 8).StatusCode; Write-Host ('[OK] Frontend HTTP ' + $f)} catch {Write-Host ('[WARN] Frontend check failed: ' + $_.Exception.Message)}; try {$b=(Invoke-WebRequest -Uri 'http://localhost:3000' -UseBasicParsing -TimeoutSec 8).StatusCode; Write-Host ('[OK] Backend HTTP ' + $b)} catch {Write-Host ('[WARN] Backend check failed: ' + $_.Exception.Message)}"
+
+echo.
 echo ==========================================
-echo    ВСЕ СЕРВИСЫ ЗАПУЩЕНЫ!
-echo ==========================================
-echo.
-echo  Фронтенд: http://localhost:5173
-echo  Бэкенд:  http://localhost:3000
-echo.
-echo  Логин:    Kam1dzu00@yandex.ru
-echo  Пароль:   Misha305090
-echo.
-echo  Для остановки закройте окна терминалов
+echo Services started:
+echo Frontend: http://localhost:5173
+echo Backend:  http://localhost:3000
 echo ==========================================
 echo.
+echo Admin login:
+echo Email:    Kam1dzu00@yandex.ru
+echo Password: Misha305090
+echo.
+echo Close opened terminal windows to stop services.
 
+popd
 pause
